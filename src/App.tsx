@@ -1,7 +1,8 @@
 import { useState, useRef, useLayoutEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { useTypingEngine, type GamePhase } from "@/hooks/useTypingEngine"
+import { useTypingEngine } from "@/hooks/useTypingEngine"
+import { loadSettings, saveSettings } from "@/lib/storage"
 import type { KanaMode } from "@/lib/kana"
+import type { GameType } from "@/lib/words"
 import type { TimerDuration } from "@/hooks/useTimer"
 
 const KANA_MODES: { label: string; value: KanaMode }[] = [
@@ -18,45 +19,110 @@ function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
 }
 
+function PillGroup<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { label: string; value: T }[]
+  value: T
+  onChange: (value: T) => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 })
+  const buttonRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
+
+  useLayoutEffect(() => {
+    const btn = buttonRefs.current.get(value)
+    const container = containerRef.current
+    if (!btn || !container) return
+    const containerRect = container.getBoundingClientRect()
+    const btnRect = btn.getBoundingClientRect()
+    setIndicator({
+      left: btnRect.left - containerRect.left,
+      width: btnRect.width,
+    })
+  }, [value, options])
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative flex gap-1 rounded-xl border border-border bg-secondary p-1"
+    >
+      <div
+        className="absolute top-1 bottom-1 rounded-lg bg-primary transition-all duration-200 ease-out"
+        style={{ left: indicator.left, width: indicator.width }}
+      />
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          ref={(el) => {
+            if (el) buttonRefs.current.set(opt.value, el)
+          }}
+          tabIndex={-1}
+          onClick={() => onChange(opt.value)}
+          className={`relative z-10 rounded-lg px-3 py-1 text-sm font-medium transition-colors duration-200 ${
+            value === opt.value
+              ? "text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function App() {
-  const [kanaMode, setKanaMode] = useState<KanaMode>("hiragana")
-  const [duration, setDuration] = useState<TimerDuration>(30)
+  const [settings] = useState(loadSettings)
+  const [gameType, setGameType] = useState<GameType>(settings.gameType)
+  const [kanaMode, setKanaMode] = useState<KanaMode>(settings.kanaMode)
+  const [duration, setDuration] = useState<TimerDuration>(settings.duration)
 
-  const engine = useTypingEngine(kanaMode, duration)
+  const engine = useTypingEngine(gameType, kanaMode, duration)
 
-  function handleModeChange(mode: KanaMode) {
-    setKanaMode(mode)
-    engine.reset(mode)
+  function handleGameTypeChange(type: GameType) {
+    setGameType(type)
+    saveSettings({ gameType: type })
+    engine.reset(type, undefined, undefined)
+  }
+
+  function handleModeChange(newMode: KanaMode) {
+    setKanaMode(newMode)
+    saveSettings({ kanaMode: newMode })
+    engine.reset(undefined, newMode, undefined)
   }
 
   function handleDurationChange(dur: TimerDuration) {
     setDuration(dur)
-    engine.reset()
+    saveSettings({ duration: dur })
+    engine.reset(undefined, undefined, dur)
   }
-
-  const showConfig = engine.phase === "idle"
 
   return (
     <div className="flex min-h-svh flex-col bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between px-8 py-4">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center px-8 py-4">
+        <a
+          href="/"
+          className="flex items-center gap-3 transition-opacity hover:opacity-80"
+          onClick={(e) => {
+            e.preventDefault()
+            engine.reset()
+          }}
+        >
           <img
             src="/tanuki-type-logo.svg"
             alt="TanukiType logo"
-            className="h-12 w-12"
+            className="h-10 w-10"
           />
-          <span className="text-3xl font-bold text-primary">TanukiType</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm">
-            Guest
-          </Button>
-        </div>
+          <span className="text-2xl font-bold text-primary">TanukiType</span>
+        </a>
       </header>
 
       {/* Main area */}
-      <main className="flex flex-1 flex-col items-center justify-center gap-12 px-8">
+      <main className="flex flex-1 flex-col items-center justify-center gap-10 px-8">
         {engine.phase === "finished" ? (
           <ResultsScreen
             wpm={engine.wpm}
@@ -66,71 +132,82 @@ export function App() {
           />
         ) : (
           <>
-            {/* Mode selectors — hidden while typing */}
+            {/* Config row — fades out while typing */}
             <div
-              className={`flex flex-col items-center gap-3 transition-opacity duration-200 ${showConfig ? "opacity-100" : "pointer-events-none opacity-0"}`}
+              className={`flex items-center gap-3 transition-opacity duration-300 ${engine.phase === "idle" ? "opacity-100" : "pointer-events-none opacity-0"}`}
             >
-              <div className="flex gap-1 rounded-xl border border-border bg-secondary p-1">
-                {KANA_MODES.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => handleModeChange(m.value)}
-                    className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-                      kanaMode === m.value
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1 rounded-xl border border-border bg-secondary p-1">
-                {TIMER_DURATIONS.map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => handleDurationChange(d)}
-                    className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
-                      duration === d
-                        ? "bg-accent text-accent-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {d}s
-                  </button>
-                ))}
-              </div>
+              <PillGroup
+                options={[
+                  { label: "Kana", value: "kana" as GameType },
+                  { label: "Words", value: "words" as GameType },
+                ]}
+                value={gameType}
+                onChange={handleGameTypeChange}
+              />
+              <PillGroup
+                options={KANA_MODES}
+                value={kanaMode}
+                onChange={handleModeChange}
+              />
+              <PillGroup
+                options={TIMER_DURATIONS.map((d) => ({
+                  label: `${d}s`,
+                  value: String(d) as `${TimerDuration}`,
+                }))}
+                value={String(duration) as `${TimerDuration}`}
+                onChange={(v) =>
+                  handleDurationChange(Number(v) as TimerDuration)
+                }
+              />
             </div>
 
-            {/* Kana display */}
+            {/* Kana display — key forces remount + fade-in on reset */}
             <KanaDisplay
+              key={engine.resetKey}
               sequence={engine.sequence}
               charStates={engine.charStates}
               currentIndex={engine.currentIndex}
               inputBuffer={engine.inputBuffer}
+              gameType={gameType}
             />
 
-            {/* Stats bar */}
-            <StatsBar
-              wpm={engine.wpm}
-              accuracy={engine.accuracy}
-              errors={engine.errors}
-              timeLeft={engine.timeLeft}
-              phase={engine.phase}
-            />
+            {/* Timer — fades in while playing */}
+            <div
+              className={`transition-opacity duration-300 ${engine.phase === "playing" ? "opacity-100" : "pointer-events-none opacity-0"}`}
+            >
+              <span className="text-2xl font-bold tabular-nums text-foreground">
+                {formatTime(engine.timeLeft)}
+              </span>
+            </div>
           </>
         )}
       </main>
 
-      {/* Hotkey bar */}
-      <footer className="flex items-center justify-center gap-8 px-8 py-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono">
-            Tab
-          </kbd>
-          <span>Restart</span>
-        </div>
+      {/* Footer */}
+      <footer className="flex items-center justify-center px-8 py-4">
+        {engine.phase === "idle" && (
+          <span className="text-sm text-muted-foreground">
+            start typing to begin
+          </span>
+        )}
+        {engine.phase === "playing" && (
+          <Hotkey keyName="Tab" label="Restart" />
+        )}
+        {engine.phase === "finished" && (
+          <Hotkey keyName="Tab" label="New game" />
+        )}
       </footer>
+    </div>
+  )
+}
+
+function Hotkey({ keyName, label }: { keyName: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono">
+        {keyName}
+      </kbd>
+      <span>{label}</span>
     </div>
   )
 }
@@ -148,18 +225,30 @@ function KanaDisplay({
   charStates,
   currentIndex,
   inputBuffer,
+  gameType,
 }: {
   sequence: { kana: string; romaji: string[] }[]
   charStates: ("correct" | "current" | "pending" | "error")[]
   currentIndex: number
   inputBuffer: string
+  gameType: GameType
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const currentKanaRef = useRef<HTMLSpanElement>(null)
-  const [cursorStyle, setCursorStyle] = useState({ left: 0, top: 0, height: 0 })
+  const [cursorStyle, setCursorStyle] = useState({
+    left: 0,
+    top: 0,
+    height: 0,
+  })
 
-  const visibleStart = Math.max(0, currentIndex - 10)
-  const visibleEnd = Math.min(sequence.length, currentIndex + 40)
+  const visibleStart = Math.max(
+    0,
+    currentIndex - (gameType === "words" ? 3 : 10)
+  )
+  const visibleEnd = Math.min(
+    sequence.length,
+    currentIndex + (gameType === "words" ? 12 : 40)
+  )
   const visible = sequence.slice(visibleStart, visibleEnd)
 
   const currentEntry = sequence[currentIndex]
@@ -176,12 +265,12 @@ function KanaDisplay({
       top: kana.top - container.top + 4,
       height: kana.height - 8,
     })
-  }, [currentIndex, fillPercent])
+  }, [currentIndex, fillPercent, sequence])
 
   return (
     <div
       ref={containerRef}
-      className="relative max-w-4xl select-none text-center font-kana text-3xl leading-relaxed"
+      className="relative max-w-4xl animate-fade-in select-none text-center font-kana text-3xl leading-relaxed"
     >
       {/* Smooth animated cursor */}
       <div
@@ -228,75 +317,22 @@ function KanaDisplay({
         }
 
         return (
-          <span
-            key={absIndex}
-            ref={isCurrent ? currentKanaRef : undefined}
-            className={`mx-[0.15em] inline-block ${colorClass} transition-colors duration-150`}
-            style={gradientStyle}
-          >
-            {entry.kana}
+          <span key={absIndex} className="inline-block">
+            <span
+              ref={isCurrent ? currentKanaRef : undefined}
+              className={`inline-block ${colorClass} transition-colors duration-150`}
+              style={gradientStyle}
+            >
+              {entry.kana}
+            </span>
+            {gameType === "words" ? (
+              <span className="inline-block w-4" />
+            ) : (
+              <span className="inline-block w-[0.3em]" />
+            )}
           </span>
         )
       })}
-    </div>
-  )
-}
-
-function StatsBar({
-  wpm,
-  accuracy,
-  errors,
-  timeLeft,
-  phase,
-}: {
-  wpm: number
-  accuracy: number
-  errors: number
-  timeLeft: number
-  phase: GamePhase
-}) {
-  return (
-    <div className="flex items-center gap-8 text-sm">
-      <StatItem label="WPM" value={String(wpm)} className="text-primary" />
-      <div className="h-8 w-px bg-border" />
-      <StatItem
-        label="Accuracy"
-        value={`${accuracy}%`}
-        className="text-primary"
-      />
-      <div className="h-8 w-px bg-border" />
-      <StatItem
-        label="Errors"
-        value={String(errors)}
-        className="text-destructive"
-      />
-      <div className="h-8 w-px bg-border" />
-      <StatItem
-        label={phase === "idle" ? "Duration" : "Time Left"}
-        value={formatTime(timeLeft)}
-        className="text-foreground"
-      />
-    </div>
-  )
-}
-
-function StatItem({
-  label,
-  value,
-  className,
-}: {
-  label: string
-  value: string
-  className: string
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-xs uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
-      <span className={`text-2xl font-bold tabular-nums ${className}`}>
-        {value}
-      </span>
     </div>
   )
 }
@@ -313,37 +349,31 @@ function ResultsScreen({
   correctChars: number
 }) {
   return (
-    <div className="flex flex-col items-center gap-8">
-      <h2 className="text-2xl font-bold text-foreground">Results</h2>
-      <div className="flex items-center gap-10">
+    <div className="flex flex-col items-center gap-10">
+      <div className="flex items-center gap-12">
         <div className="flex flex-col items-center gap-2">
           <span className="text-xs uppercase tracking-wider text-muted-foreground">
             WPM
           </span>
-          <span className="text-5xl font-bold text-primary">{wpm}</span>
+          <span className="text-6xl font-bold tabular-nums text-primary">
+            {wpm}
+          </span>
         </div>
+        <div className="h-16 w-px bg-border" />
         <div className="flex flex-col items-center gap-2">
           <span className="text-xs uppercase tracking-wider text-muted-foreground">
             Accuracy
           </span>
-          <span className="text-5xl font-bold text-primary">{accuracy}%</span>
+          <span className="text-6xl font-bold tabular-nums text-primary">
+            {accuracy}%
+          </span>
         </div>
       </div>
-      <div className="flex items-center gap-8 text-sm text-muted-foreground">
-        <span>
-          {correctChars} correct characters
-        </span>
-        <span>
-          {errors} errors
-        </span>
+      <div className="flex items-center gap-6 text-sm text-muted-foreground">
+        <span>{correctChars} correct</span>
+        <span className="text-border">|</span>
+        <span>{errors} errors</span>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Press{" "}
-        <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono">
-          Tab
-        </kbd>{" "}
-        to restart
-      </p>
     </div>
   )
 }

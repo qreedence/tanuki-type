@@ -6,6 +6,7 @@ import {
   type KanaEntry,
   type KanaMode,
 } from "@/lib/kana"
+import { loadWords, wordsToSequence, type GameType } from "@/lib/words"
 import { useTimer, type TimerDuration } from "@/hooks/useTimer"
 
 export type CharState = "correct" | "current" | "pending" | "error"
@@ -21,12 +22,17 @@ type EngineState = {
   totalKeystrokes: number
   charStates: CharState[]
   phase: GamePhase
+  finalElapsed: number | null
+  resetKey: number
 }
 
-const SEQUENCE_LENGTH = 100
+const BATCH_SIZE_KANA = 80
+const BATCH_SIZE_WORDS = 25
+const EXTEND_THRESHOLD = 15
 
-function createInitialState(mode: KanaMode): EngineState {
-  const sequence = generateSequence(mode, SEQUENCE_LENGTH)
+let resetCounter = 0
+
+function createState(sequence: KanaEntry[]): EngineState {
   return {
     sequence,
     currentIndex: 0,
@@ -36,44 +42,123 @@ function createInitialState(mode: KanaMode): EngineState {
     totalKeystrokes: 0,
     charStates: sequence.map((_, i) => (i === 0 ? "current" : "pending")),
     phase: "idle",
+    finalElapsed: null,
+    resetKey: ++resetCounter,
   }
 }
 
-export function useTypingEngine(mode: KanaMode, duration: TimerDuration) {
+function extendSequence(
+  prev: EngineState,
+  extra: KanaEntry[]
+): EngineState {
+  return {
+    ...prev,
+    sequence: [...prev.sequence, ...extra],
+    charStates: [
+      ...prev.charStates,
+      ...extra.map(() => "pending" as CharState),
+    ],
+  }
+}
+
+export function useTypingEngine(
+  gameType: GameType,
+  mode: KanaMode,
+  duration: TimerDuration
+) {
   const [state, setState] = useState<EngineState>(() =>
-    createInitialState(mode)
+    createState(generateSequence(mode, BATCH_SIZE_KANA))
   )
+  const mountedRef = useRef(false)
   const startTimeRef = useRef<number | null>(null)
   const errorFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const wordCacheRef = useRef<KanaEntry[] | null>(null)
+  const gameTypeRef = useRef(gameType)
+  const modeRef = useRef(mode)
+  gameTypeRef.current = gameType
+  modeRef.current = mode
 
   const finishGame = useCallback(() => {
-    setState((prev) => ({ ...prev, phase: "finished" }))
+    setState((prev) => ({
+      ...prev,
+      phase: "finished",
+      finalElapsed: startTimeRef.current
+        ? Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000))
+        : 0,
+    }))
   }, [])
 
-  const { timeLeft, isRunning, start: startTimer, reset: resetTimer } =
-    useTimer(duration, finishGame)
+  const { timeLeft, start: startTimer, reset: resetTimer } = useTimer(
+    duration,
+    finishGame
+  )
+
+  const initSequence = useCallback(
+    async (type: GameType, kanaMode: KanaMode) => {
+      if (type === "words") {
+        const words = await loadWords("n5")
+        const seq = wordsToSequence(words, BATCH_SIZE_WORDS, kanaMode)
+        wordCacheRef.current = seq
+        return seq
+      }
+      wordCacheRef.current = null
+      return generateSequence(kanaMode, BATCH_SIZE_KANA)
+    },
+    []
+  )
+
+  const extendIfNeeded = useCallback(
+    async (currentIndex: number, sequenceLength: number) => {
+      const remaining = sequenceLength - currentIndex
+      if (remaining > EXTEND_THRESHOLD) return
+
+      let extra: KanaEntry[]
+      if (gameTypeRef.current === "words") {
+        const words = await loadWords("n5")
+        extra = wordsToSequence(words, BATCH_SIZE_WORDS, modeRef.current)
+      } else {
+        extra = generateSequence(modeRef.current, BATCH_SIZE_KANA)
+      }
+
+      setState((prev) => extendSequence(prev, extra))
+    },
+    []
+  )
 
   const reset = useCallback(
-    (newMode?: KanaMode) => {
+    async (
+      newType?: GameType,
+      newMode?: KanaMode,
+      newDuration?: TimerDuration
+    ) => {
       if (errorFlashTimerRef.current) {
         clearTimeout(errorFlashTimerRef.current)
         errorFlashTimerRef.current = null
       }
       startTimeRef.current = null
-      resetTimer()
-      setState(createInitialState(newMode ?? mode))
+      resetTimer(newDuration)
+      const sequence = await initSequence(newType ?? gameType, newMode ?? mode)
+      setState(createState(sequence))
     },
-    [mode, resetTimer]
+    [gameType, mode, resetTimer, initSequence]
   )
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      if (gameType === "words") {
+        reset()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleKey = useCallback(
     (key: string) => {
       setState((prev) => {
         if (prev.phase === "finished") return prev
 
-        if (key === "Tab") {
-          return prev
-        }
+        if (key === "Tab") return prev
 
         if (key.length !== 1 || !/[a-z]/i.test(key)) return prev
 
@@ -91,21 +176,24 @@ export function useTypingEngine(mode: KanaMode, duration: TimerDuration) {
 
         if (isCompleteMatch(newBuffer, current.romaji)) {
           const newIndex = prev.currentIndex + 1
-          const isFinished = newIndex >= prev.sequence.length
           const newCharStates = [...prev.charStates]
           newCharStates[prev.currentIndex] = "correct"
-          if (!isFinished) {
+          if (newIndex < prev.sequence.length) {
             newCharStates[newIndex] = "current"
           }
 
+          // Trigger async extension (won't block this render)
+          extendIfNeeded(newIndex, prev.sequence.length)
+
           return {
             ...prev,
-            phase: isFinished ? "finished" : phase,
+            phase,
             currentIndex: newIndex,
             inputBuffer: "",
             correctChars: prev.correctChars + 1,
             totalKeystrokes: newTotalKeystrokes,
             charStates: newCharStates,
+            finalElapsed: null,
           }
         }
 
@@ -145,7 +233,7 @@ export function useTypingEngine(mode: KanaMode, duration: TimerDuration) {
         }
       })
     },
-    [startTimer]
+    [startTimer, extendIfNeeded]
   )
 
   useEffect(() => {
@@ -167,9 +255,11 @@ export function useTypingEngine(mode: KanaMode, duration: TimerDuration) {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [handleKey, reset, state.phase])
 
-  const elapsedSeconds = startTimeRef.current
-    ? Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000))
-    : 0
+  const elapsedSeconds =
+    state.finalElapsed ??
+    (startTimeRef.current
+      ? Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000))
+      : 0)
 
   const wpm =
     state.correctChars > 0 && elapsedSeconds > 0
@@ -194,7 +284,7 @@ export function useTypingEngine(mode: KanaMode, duration: TimerDuration) {
     wpm,
     accuracy,
     timeLeft,
-    isRunning,
+    resetKey: state.resetKey,
     reset,
   }
 }
