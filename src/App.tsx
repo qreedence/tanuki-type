@@ -1,7 +1,7 @@
 import { useState, useRef, useLayoutEffect } from "react"
 import { useTypingEngine } from "@/hooks/useTypingEngine"
 import { loadSettings, saveSettings } from "@/lib/storage"
-import type { KanaMode } from "@/lib/kana"
+import { groupKanaHints, type KanaMode } from "@/lib/kana"
 import type { GameType } from "@/lib/words"
 import type { TimerDuration } from "@/hooks/useTimer"
 
@@ -79,6 +79,7 @@ export function App() {
   const [gameType, setGameType] = useState<GameType>(settings.gameType)
   const [kanaMode, setKanaMode] = useState<KanaMode>(settings.kanaMode)
   const [duration, setDuration] = useState<TimerDuration>(settings.duration)
+  const [showHints, setShowHints] = useState(settings.showHints)
 
   const engine = useTypingEngine(gameType, kanaMode, duration)
 
@@ -98,6 +99,12 @@ export function App() {
     setDuration(dur)
     saveSettings({ duration: dur })
     engine.reset(undefined, undefined, dur)
+  }
+
+  function handleHintsToggle() {
+    const next = !showHints
+    setShowHints(next)
+    saveSettings({ showHints: next })
   }
 
   return (
@@ -159,6 +166,17 @@ export function App() {
                   handleDurationChange(Number(v) as TimerDuration)
                 }
               />
+              <button
+                tabIndex={-1}
+                onClick={handleHintsToggle}
+                className={`rounded-xl border px-3 py-1 text-sm font-medium transition-colors ${
+                  showHints
+                    ? "border-primary/50 bg-primary/10 text-primary"
+                    : "border-border bg-secondary text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Hints
+              </button>
             </div>
 
             {/* Kana display — key forces remount + fade-in on reset */}
@@ -169,6 +187,7 @@ export function App() {
               currentIndex={engine.currentIndex}
               inputBuffer={engine.inputBuffer}
               gameType={gameType}
+              showHints={showHints}
             />
 
             {/* Timer — fades in while playing */}
@@ -226,12 +245,14 @@ function KanaDisplay({
   currentIndex,
   inputBuffer,
   gameType,
+  showHints,
 }: {
   sequence: { kana: string; romaji: string[] }[]
   charStates: ("correct" | "current" | "pending" | "error")[]
   currentIndex: number
   inputBuffer: string
   gameType: GameType
+  showHints: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const currentKanaRef = useRef<HTMLSpanElement>(null)
@@ -270,7 +291,7 @@ function KanaDisplay({
   return (
     <div
       ref={containerRef}
-      className="relative max-w-4xl animate-fade-in select-none text-center font-kana text-3xl leading-relaxed"
+      className={`relative max-w-4xl animate-fade-in select-none text-center font-kana text-3xl ${showHints ? "leading-loose" : "leading-relaxed"}`}
     >
       {/* Smooth animated cursor */}
       <div
@@ -298,7 +319,7 @@ function KanaDisplay({
             colorClass = "text-kana-incorrect"
             break
           case "current":
-            if (fill > 0) {
+            if (fill > 0 && !showHints) {
               colorClass = ""
               const pct = `${fill * 100}%`
               gradientStyle = {
@@ -316,6 +337,11 @@ function KanaDisplay({
             break
         }
 
+        const hintGroups = showHints && state !== "correct"
+          ? groupKanaHints(entry.kana)
+          : null
+        const isMultiChar = [...entry.kana].length > 1
+
         return (
           <span key={absIndex} className="inline-block">
             <span
@@ -323,13 +349,20 @@ function KanaDisplay({
               className={`inline-block ${colorClass} transition-colors duration-150`}
               style={gradientStyle}
             >
-              {entry.kana}
+              {hintGroups
+                ? hintGroups.map((group, gi) => (
+                    <span key={gi} className="relative inline-block">
+                      <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap font-sans text-[0.35em] text-muted-foreground">
+                        {group.romaji}
+                      </span>
+                      {group.chars}
+                    </span>
+                  ))
+                : entry.kana}
             </span>
-            {gameType === "words" ? (
-              <span className="inline-block w-4" />
-            ) : (
-              <span className="inline-block w-[0.3em]" />
-            )}
+            <span
+              className={`inline-block ${isMultiChar ? "w-4" : "w-[0.3em]"}`}
+            />
           </span>
         )
       })}

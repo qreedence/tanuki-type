@@ -177,6 +177,93 @@ const KATAKANA: KanaEntry[] = [
   { kana: "ポ", romaji: ["po"] },
 ]
 
+const KANA_TO_ROMAJI = new Map<string, string>()
+for (const entry of [...HIRAGANA, ...KATAKANA]) {
+  KANA_TO_ROMAJI.set(entry.kana, entry.romaji[0]!)
+}
+const SMALL_Y = "ゃゅょャュョ"
+const SMALL_TSU = "っッ"
+
+const COMBO_MAP: Record<string, Record<string, string>> = {
+  き: { ゃ: "kya", ゅ: "kyu", ょ: "kyo" },
+  し: { ゃ: "sha", ゅ: "shu", ょ: "sho" },
+  ち: { ゃ: "cha", ゅ: "chu", ょ: "cho" },
+  に: { ゃ: "nya", ゅ: "nyu", ょ: "nyo" },
+  ひ: { ゃ: "hya", ゅ: "hyu", ょ: "hyo" },
+  み: { ゃ: "mya", ゅ: "myu", ょ: "myo" },
+  り: { ゃ: "rya", ゅ: "ryu", ょ: "ryo" },
+  ぎ: { ゃ: "gya", ゅ: "gyu", ょ: "gyo" },
+  じ: { ゃ: "ja", ゅ: "ju", ょ: "jo" },
+  ぢ: { ゃ: "dya", ゅ: "dyu", ょ: "dyo" },
+  び: { ゃ: "bya", ゅ: "byu", ょ: "byo" },
+  ぴ: { ゃ: "pya", ゅ: "pyu", ょ: "pyo" },
+}
+
+function toHiraganaChar(ch: string): string {
+  const code = ch.charCodeAt(0)
+  if (code >= 0x30a1 && code <= 0x30f6) return String.fromCharCode(code - 96)
+  return ch
+}
+
+function smallYToHiragana(ch: string): string {
+  const map: Record<string, string> = {
+    ャ: "ゃ",
+    ュ: "ゅ",
+    ョ: "ょ",
+  }
+  return map[ch] ?? ch
+}
+
+export type HintGroup = { chars: string; romaji: string }
+
+export function groupKanaHints(kana: string): HintGroup[] {
+  const chars = [...kana]
+  const groups: HintGroup[] = []
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]!
+    const next = chars[i + 1]
+
+    if (next && SMALL_Y.includes(next)) {
+      const baseH = toHiraganaChar(ch)
+      const smallH = smallYToHiragana(toHiraganaChar(next))
+      const combo = COMBO_MAP[baseH]?.[smallH]
+      groups.push({ chars: ch + next, romaji: combo ?? KANA_TO_ROMAJI.get(ch)! + KANA_TO_ROMAJI.get(next)! })
+      i++
+    } else if (SMALL_TSU.includes(ch) && next) {
+      const nextNext = chars[i + 2]
+      if (nextNext && SMALL_Y.includes(nextNext)) {
+        const baseH = toHiraganaChar(next)
+        const smallH = smallYToHiragana(toHiraganaChar(nextNext))
+        const combo = COMBO_MAP[baseH]?.[smallH] ?? ""
+        groups.push({
+          chars: ch + next + nextNext,
+          romaji: combo[0] + combo,
+        })
+        i += 2
+      } else {
+        const nextRomaji = KANA_TO_ROMAJI.get(toHiraganaChar(next)) ?? KANA_TO_ROMAJI.get(next) ?? next
+        groups.push({
+          chars: ch + next,
+          romaji: nextRomaji[0] + nextRomaji,
+        })
+        i++
+      }
+    } else if (ch === "ー" && groups.length > 0) {
+      const prevRomaji = groups[groups.length - 1]!.romaji
+      const lastVowel = prevRomaji.match(/[aiueo]$/)?.[0] ?? ""
+      groups.push({ chars: ch, romaji: lastVowel })
+    } else {
+      groups.push({
+        chars: ch,
+        romaji: KANA_TO_ROMAJI.get(ch) ?? ch,
+      })
+    }
+  }
+
+  return groups
+}
+
 export function getKanaPool(mode: KanaMode): KanaEntry[] {
   switch (mode) {
     case "hiragana":

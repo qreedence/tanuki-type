@@ -6,6 +6,7 @@ type Settings = {
   gameType: GameType
   kanaMode: KanaMode
   duration: TimerDuration
+  showHints: boolean
 }
 
 const STORAGE_KEY = "tanukitype-settings"
@@ -14,6 +15,7 @@ const DEFAULTS: Settings = {
   gameType: "kana",
   kanaMode: "hiragana",
   duration: 30,
+  showHints: false,
 }
 
 const VALID_GAME_TYPES: GameType[] = ["kana", "words"]
@@ -35,6 +37,10 @@ export function loadSettings(): Settings {
       duration: VALID_DURATIONS.includes(parsed.duration)
         ? parsed.duration
         : DEFAULTS.duration,
+      showHints:
+        typeof parsed.showHints === "boolean"
+          ? parsed.showHints
+          : DEFAULTS.showHints,
     }
   } catch {
     return DEFAULTS
