@@ -286,5 +286,6 @@ export function useTypingEngine(
     timeLeft,
     resetKey: state.resetKey,
     reset,
+    finish: finishGame,
   }
 }

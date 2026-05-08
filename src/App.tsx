@@ -1,4 +1,5 @@
 import { useState, useRef, useLayoutEffect } from "react"
+import { Infinity as InfinityIcon } from "lucide-react"
 import { useTypingEngine } from "@/hooks/useTypingEngine"
 import { loadSettings, saveSettings } from "@/lib/storage"
 import { groupKanaHints, type KanaMode } from "@/lib/kana"
@@ -11,7 +12,12 @@ const KANA_MODES: { label: string; value: KanaMode }[] = [
   { label: "Mixed", value: "mixed" },
 ]
 
-const TIMER_DURATIONS: TimerDuration[] = [30, 60, 120]
+const TIMER_OPTIONS: { label: string; value: TimerDuration }[] = [
+  { label: "30s", value: 30 },
+  { label: "60s", value: 60 },
+  { label: "120s", value: 120 },
+  { label: "infinity", value: 0 },
+]
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -61,13 +67,17 @@ function PillGroup<T extends string>({
           }}
           tabIndex={-1}
           onClick={() => onChange(opt.value)}
-          className={`relative z-10 rounded-lg px-3 py-1 text-sm font-medium transition-colors duration-200 ${
+          className={`relative z-10 flex items-center justify-center rounded-lg px-3 py-1 text-sm font-medium transition-colors duration-200 ${
             value === opt.value
               ? "text-primary-foreground"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          {opt.label}
+          {opt.label === "infinity" ? (
+            <InfinityIcon className="size-4" />
+          ) : (
+            opt.label
+          )}
         </button>
       ))}
     </div>
@@ -157,11 +167,11 @@ export function App() {
                 onChange={handleModeChange}
               />
               <PillGroup
-                options={TIMER_DURATIONS.map((d) => ({
-                  label: `${d}s`,
-                  value: String(d) as `${TimerDuration}`,
+                options={TIMER_OPTIONS.map((d) => ({
+                  label: d.label,
+                  value: String(d.value),
                 }))}
-                value={String(duration) as `${TimerDuration}`}
+                value={String(duration)}
                 onChange={(v) =>
                   handleDurationChange(Number(v) as TimerDuration)
                 }
@@ -190,13 +200,23 @@ export function App() {
               showHints={showHints}
             />
 
-            {/* Timer — fades in while playing */}
+            {/* Timer / Finish — fades in while playing */}
             <div
               className={`transition-opacity duration-300 ${engine.phase === "playing" ? "opacity-100" : "pointer-events-none opacity-0"}`}
             >
-              <span className="text-2xl font-bold tabular-nums text-foreground">
-                {formatTime(engine.timeLeft)}
-              </span>
+              {duration === 0 ? (
+                <button
+                  tabIndex={-1}
+                  onClick={() => engine.finish()}
+                  className="rounded-xl border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Finish
+                </button>
+              ) : (
+                <span className="text-2xl font-bold tabular-nums text-foreground">
+                  {formatTime(engine.timeLeft)}
+                </span>
+              )}
             </div>
           </>
         )}

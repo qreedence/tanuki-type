@@ -20,7 +20,7 @@ const DEFAULTS: Settings = {
 
 const VALID_GAME_TYPES: GameType[] = ["kana", "words"]
 const VALID_KANA_MODES: KanaMode[] = ["hiragana", "katakana", "mixed"]
-const VALID_DURATIONS: TimerDuration[] = [15, 30, 60, 120]
+const VALID_DURATIONS: TimerDuration[] = [0, 15, 30, 60, 120]
 
 export function loadSettings(): Settings {
   try {
