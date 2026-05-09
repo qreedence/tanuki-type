@@ -7,6 +7,7 @@ import { ConfigBar } from "@/components/game/config-bar"
 import { KanaDisplay } from "@/components/game/kana-display"
 import { GameTimer } from "@/components/game/game-timer"
 import { ResultsScreen } from "@/components/results/results-screen"
+import { SettingsDrawer } from "@/components/game/settings-drawer"
 import type { KanaMode } from "@/lib/kana"
 import type { GameType } from "@/lib/words"
 import type { TimerDuration } from "@/hooks/useTimer"
@@ -17,6 +18,7 @@ export function App() {
   const [kanaMode, setKanaMode] = useState<KanaMode>(settings.kanaMode)
   const [duration, setDuration] = useState<TimerDuration>(settings.duration)
   const [showHints, setShowHints] = useState(settings.showHints)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const engine = useTypingEngine(gameType, kanaMode, duration)
 
@@ -46,7 +48,22 @@ export function App() {
 
   return (
     <div className="flex min-h-svh flex-col bg-background">
-      <Header onLogoClick={() => engine.reset()} />
+      <Header
+        onLogoClick={() => engine.reset()}
+        onSettingsClick={() => setSettingsOpen(true)}
+      />
+      <SettingsDrawer
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        gameType={gameType}
+        kanaMode={kanaMode}
+        duration={duration}
+        showHints={showHints}
+        onGameTypeChange={handleGameTypeChange}
+        onModeChange={handleModeChange}
+        onDurationChange={handleDurationChange}
+        onHintsToggle={handleHintsToggle}
+      />
 
       <main className="flex flex-1 flex-col items-center justify-center gap-10 px-8">
         {engine.phase === "finished" ? (
@@ -59,7 +76,7 @@ export function App() {
         ) : (
           <>
             <div
-              className={`transition-opacity duration-300 ${engine.phase === "idle" ? "opacity-100" : "pointer-events-none opacity-0"}`}
+              className={`hidden transition-opacity duration-300 md:block ${engine.phase === "idle" ? "opacity-100" : "pointer-events-none opacity-0"}`}
             >
               <ConfigBar
                 gameType={gameType}
