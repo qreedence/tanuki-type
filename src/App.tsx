@@ -84,7 +84,7 @@ export function App() {
             />
 
             <div
-              className={`transition-opacity duration-300 ${engine.phase === "playing" ? "opacity-100" : "pointer-events-none opacity-0"}`}
+              className={`h-10 transition-opacity duration-300 ${engine.phase === "playing" ? "opacity-100" : "pointer-events-none opacity-0"}`}
             >
               <GameTimer
                 duration={duration}

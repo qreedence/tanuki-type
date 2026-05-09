@@ -1,20 +1,8 @@
-import { PillGroup } from "@/components/ui/pill-group"
+import { Infinity as InfinityIcon } from "lucide-react"
+import AnimatedTabs from "@/components/ui/smoothui/animated-tabs"
 import type { KanaMode } from "@/lib/kana"
 import type { GameType } from "@/lib/words"
 import type { TimerDuration } from "@/hooks/useTimer"
-
-const KANA_MODES: { label: string; value: KanaMode }[] = [
-  { label: "Hiragana", value: "hiragana" },
-  { label: "Katakana", value: "katakana" },
-  { label: "Mixed", value: "mixed" },
-]
-
-const TIMER_OPTIONS: { label: string; value: TimerDuration }[] = [
-  { label: "30s", value: 30 },
-  { label: "60s", value: 60 },
-  { label: "120s", value: 120 },
-  { label: "infinity", value: 0 },
-]
 
 export function ConfigBar({
   gameType,
@@ -37,26 +25,39 @@ export function ConfigBar({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <PillGroup
-        options={[
-          { label: "Kana", value: "kana" as GameType },
-          { label: "Words", value: "words" as GameType },
+      <AnimatedTabs
+        variant="pill"
+        activeTab={gameType}
+        onChange={(id) => onGameTypeChange(id as GameType)}
+        tabs={[
+          { id: "kana", label: "Kana" },
+          { id: "words", label: "Words" },
         ]}
-        value={gameType}
-        onChange={onGameTypeChange}
       />
-      <PillGroup
-        options={KANA_MODES}
-        value={kanaMode}
-        onChange={onModeChange}
+      <AnimatedTabs
+        variant="pill"
+        activeTab={kanaMode}
+        onChange={(id) => onModeChange(id as KanaMode)}
+        tabs={[
+          { id: "hiragana", label: "Hiragana" },
+          { id: "katakana", label: "Katakana" },
+          { id: "mixed", label: "Mixed" },
+        ]}
       />
-      <PillGroup
-        options={TIMER_OPTIONS.map((d) => ({
-          label: d.label,
-          value: String(d.value),
-        }))}
-        value={String(duration)}
-        onChange={(v) => onDurationChange(Number(v) as TimerDuration)}
+      <AnimatedTabs
+        variant="pill"
+        activeTab={String(duration)}
+        onChange={(id) => onDurationChange(Number(id) as TimerDuration)}
+        tabs={[
+          { id: "30", label: "30s" },
+          { id: "60", label: "60s" },
+          { id: "120", label: "120s" },
+          {
+            id: "0",
+            label: "",
+            icon: <InfinityIcon className="size-4" />,
+          },
+        ]}
       />
       <button
         tabIndex={-1}
