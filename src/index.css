@@ -201,6 +201,9 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
   html {
     @apply font-sans antialiased;
   }
