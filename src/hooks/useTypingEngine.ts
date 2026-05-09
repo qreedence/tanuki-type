@@ -64,7 +64,8 @@ function extendSequence(
 export function useTypingEngine(
   gameType: GameType,
   mode: KanaMode,
-  duration: TimerDuration
+  duration: TimerDuration,
+  skipGlobalKeyboard = false
 ) {
   const [state, setState] = useState<EngineState>(() =>
     createState(generateSequence(mode, BATCH_SIZE_KANA))
@@ -237,6 +238,8 @@ export function useTypingEngine(
   )
 
   useEffect(() => {
+    if (skipGlobalKeyboard) return
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
         e.preventDefault()
@@ -253,7 +256,7 @@ export function useTypingEngine(
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [handleKey, reset, state.phase])
+  }, [handleKey, reset, state.phase, skipGlobalKeyboard])
 
   const elapsedSeconds =
     state.finalElapsed ??
@@ -287,5 +290,6 @@ export function useTypingEngine(
     resetKey: state.resetKey,
     reset,
     finish: finishGame,
+    handleKey,
   }
 }

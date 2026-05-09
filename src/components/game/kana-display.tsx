@@ -58,11 +58,16 @@ export function KanaDisplay({
       top: kana.top - container.top + 4,
       height: kana.height - 8,
     })
+    currentKanaRef.current.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    })
   }, [currentIndex, fillPercent, sequence])
 
   return (
     <div
       ref={containerRef}
+      data-slot="kana-display"
       className={`relative max-w-4xl animate-fade-in select-none text-center font-kana text-3xl ${showHints ? "leading-loose" : "leading-relaxed"}`}
     >
       {/* Smooth animated cursor */}

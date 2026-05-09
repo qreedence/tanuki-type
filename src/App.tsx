@@ -1,11 +1,13 @@
 import { useState } from "react"
 import { useTypingEngine } from "@/hooks/useTypingEngine"
+import { useIsTouchDevice } from "@/hooks/useIsTouchDevice"
 import { loadSettings, saveSettings } from "@/lib/storage"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { ConfigBar } from "@/components/game/config-bar"
 import { KanaDisplay } from "@/components/game/kana-display"
 import { GameTimer } from "@/components/game/game-timer"
+import { MobileInput } from "@/components/game/mobile-input"
 import { ResultsScreen } from "@/components/results/results-screen"
 import { SettingsDrawer } from "@/components/game/settings-drawer"
 import type { KanaMode } from "@/lib/kana"
@@ -19,8 +21,9 @@ export function App() {
   const [duration, setDuration] = useState<TimerDuration>(settings.duration)
   const [showHints, setShowHints] = useState(settings.showHints)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const isTouch = useIsTouchDevice()
 
-  const engine = useTypingEngine(gameType, kanaMode, duration)
+  const engine = useTypingEngine(gameType, kanaMode, duration, isTouch)
 
   function handleGameTypeChange(type: GameType) {
     setGameType(type)
@@ -47,7 +50,7 @@ export function App() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <Header
         onLogoClick={() => engine.reset()}
         onSettingsClick={() => setSettingsOpen(true)}
@@ -65,7 +68,16 @@ export function App() {
         onHintsToggle={handleHintsToggle}
       />
 
-      <main className="flex flex-1 flex-col items-center justify-center gap-10 px-8">
+      {isTouch && (
+        <MobileInput
+          onKey={(key) => engine.handleKey(key)}
+          onReset={() => engine.reset()}
+          disabled={engine.phase === "finished"}
+          suppressFocus={settingsOpen}
+        />
+      )}
+
+      <main className="flex flex-1 flex-col items-center justify-center gap-6 px-4 pb-safe md:gap-10 md:px-8">
         {engine.phase === "finished" ? (
           <ResultsScreen
             wpm={engine.wpm}
@@ -75,6 +87,7 @@ export function App() {
           />
         ) : (
           <>
+            {/* Desktop config row */}
             <div
               className={`hidden transition-opacity duration-300 md:block ${engine.phase === "idle" ? "opacity-100" : "pointer-events-none opacity-0"}`}
             >
@@ -90,6 +103,19 @@ export function App() {
               />
             </div>
 
+            {/* Timer — above kana on mobile, below on desktop */}
+            <div
+              data-slot="mobile-timer"
+              className={`h-10 scroll-mt-8 transition-opacity duration-300 md:hidden ${engine.phase === "playing" ? "opacity-100" : "pointer-events-none opacity-0"}`}
+            >
+              <GameTimer
+                duration={duration}
+                timeLeft={engine.timeLeft}
+                onFinish={() => engine.finish()}
+              />
+            </div>
+
+            {/* Kana display */}
             <KanaDisplay
               key={engine.resetKey}
               sequence={engine.sequence}
@@ -100,8 +126,9 @@ export function App() {
               showHints={showHints}
             />
 
+            {/* Timer — below kana on desktop */}
             <div
-              className={`h-10 transition-opacity duration-300 ${engine.phase === "playing" ? "opacity-100" : "pointer-events-none opacity-0"}`}
+              className={`hidden h-10 transition-opacity duration-300 md:block ${engine.phase === "playing" ? "opacity-100" : "pointer-events-none opacity-0"}`}
             >
               <GameTimer
                 duration={duration}
@@ -113,7 +140,7 @@ export function App() {
         )}
       </main>
 
-      <Footer phase={engine.phase} />
+      <Footer phase={engine.phase} isTouch={isTouch} onReset={() => engine.reset()} />
     </div>
   )
 }
